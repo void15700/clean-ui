@@ -7,30 +7,14 @@ from transformers import MllamaForConditionalGeneration, AutoModelForCausalLM, A
 # Set memory management for PyTorch
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'  # or adjust size as needed
 
-# Model selection menu in terminal
-print("Select a model to load:")
-print("1. Llama-3.2-11B-Vision-Instruct-bnb-4bit")
-print("2. Molmo-7B-D-bnb-4bit")
-model_choice = input("Enter the number of the model you want to use: ")
 
-if model_choice == "1":
-    model_id = "unsloth/Llama-3.2-11B-Vision-Instruct-bnb-4bit"
-    model = MllamaForConditionalGeneration.from_pretrained(
-        model_id,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-    )
-    processor = AutoProcessor.from_pretrained(model_id)
-
-elif model_choice == "2":
-    model_id = "cyan2k/molmo-7B-D-bnb-4bit"
-    arguments = {"device_map": "auto", "torch_dtype": "auto", "trust_remote_code": True}
-    model = AutoModelForCausalLM.from_pretrained(model_id, **arguments)
-    processor = AutoProcessor.from_pretrained(model_id, **arguments)
-
-else:
-    raise ValueError("Invalid model choice. Please enter 1 or 2.")
-
+model_id = "unsloth/Llama-3.2-11B-Vision-Instruct-bnb-4bit"
+model = MllamaForConditionalGeneration.from_pretrained(
+    model_id,
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
+)
+processor = AutoProcessor.from_pretrained(model_id)
 # Visual theme
 visual_theme = gr.themes.Default()  # Default, Soft or Monochrome
 
@@ -47,49 +31,24 @@ def describe_image(image, user_prompt, temperature, top_k, top_p, max_tokens, hi
     cleaned_output = ""
 
     # Prepare prompt with user input based on selected model
-    if model_choice == "1":  # Llama Model
-        prompt = f"<|image|><|begin_of_text|>{user_prompt} Answer:"
-        # Preprocess the image and prompt
-        inputs = processor(image, prompt, return_tensors="pt").to(model.device)
+    prompt = f"<|image|><|begin_of_text|>{user_prompt} Answer:"
+    # Preprocess the image and prompt
+    inputs = processor(image, prompt, return_tensors="pt").to(model.device)
 
-        # Generate output with model
-        output = model.generate(
-            **inputs,
-            max_new_tokens=min(max_tokens, MAX_OUTPUT_TOKENS),
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p
-        )
+    # Generate output with model
+    output = model.generate(
+        **inputs,
+        max_new_tokens=min(max_tokens, MAX_OUTPUT_TOKENS),
+        temperature=temperature,
+        top_k=top_k,
+        top_p=top_p
+    )
 
-        # Decode the raw output
-        raw_output = processor.decode(output[0])
-        
-        # Clean up the output to remove system tokens
-        cleaned_output = raw_output.replace("<|image|><|begin_of_text|>", "").strip().replace(" Answer:", "")
-
-    elif model_choice == "2":  # Molmo Model
-        # Prepare inputs for Molmo model
-        inputs = processor.process(images=[image], text=user_prompt)
-        inputs = {k: v.to(model.device).unsqueeze(0) for k, v in inputs.items()}
-        
-        # Generate output with model, applying the parameters for temperature, top_k, top_p, and max_tokens
-        output = model.generate_from_batch(
-            inputs,
-            GenerationConfig(
-                max_new_tokens=min(max_tokens, MAX_OUTPUT_TOKENS),
-                temperature=temperature,
-                top_k=top_k,
-                top_p=top_p,
-                stop_strings="<|endoftext|>",
-                do_sample=True
-            ),
-            tokenizer=processor.tokenizer,
-        )
-
-        # Extract generated tokens and decode them to text
-        generated_tokens = output[0, inputs["input_ids"].size(1):]
-        cleaned_output = processor.tokenizer.decode(generated_tokens, skip_special_tokens=True)
-
+    # Decode the raw output
+    raw_output = processor.decode(output[0])
+    
+    # Clean up the output to remove system tokens
+    cleaned_output = raw_output.replace("<|image|><|begin_of_text|>", "").strip().replace(" Answer:", "")
     # Ensure the prompt is not repeated in the output
     if cleaned_output.startswith(user_prompt):
         cleaned_output = cleaned_output[len(user_prompt):].strip()
